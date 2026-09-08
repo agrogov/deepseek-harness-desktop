@@ -20,9 +20,16 @@ const settingsGeneralClientPath = path.join(
   'client.js',
 )
 const dshManifestPath = path.join(root, 'node_modules', '@deepseek-ai', 'dsh', 'package.json')
+const dshMarketRoutesPath = path.join(root, 'node_modules', 'dshmarket', 'lib', 'regions.js')
 const windowsNodePath = path.join(root, 'assets', 'dsh-node.exe')
 const nodeLicensePath = path.join(root, 'third-party-licenses', 'nodejs-LICENSE')
 const DSH_MARKET_VERSION = '1.40.0'
+
+const ORIGINAL_GLOBAL_CATALOG = "catalog: [{ kind: 'url', url: CATALOG_OFFICIAL }],"
+const PATCHED_GLOBAL_CATALOG = `catalog: [
+            { kind: 'npm', registry: DEFAULT_NPM_REGISTRY, pkg: CATALOG_PACKAGE },
+            { kind: 'url', url: CATALOG_OFFICIAL },
+        ],`
 
 const ORIGINAL_WINDOWS_OPENER = `async function openWindowsPath(path, signal, run) {
 \tawait run("powershell.exe", [
@@ -134,6 +141,9 @@ export function patchWindowsPathOpener(source) {
 }
 
 export function prepareApiProxy(target = apiProxyPath) {
+  // DeepSeek Harness 0.1.2 removed this package. Keep the patch for older
+  // supported releases, but do not make installation fail when it is absent.
+  if (!existsSync(target)) return
   const source = readFileSync(target, 'utf8')
   const patched = patchWindowsPathOpener(source)
   if (patched !== source) writeFileSync(target, patched)
@@ -167,6 +177,21 @@ export function patchDshManifest(source) {
 export function prepareDshManifest(target = dshManifestPath) {
   const source = readFileSync(target, 'utf8')
   const patched = patchDshManifest(source)
+  if (patched !== source) writeFileSync(target, patched)
+}
+
+export function patchDshMarketRoutes(source) {
+  if (source.includes(PATCHED_GLOBAL_CATALOG)) return source
+  const matches = source.split(ORIGINAL_GLOBAL_CATALOG).length - 1
+  if (matches !== 1) {
+    throw new Error(`Expected exactly one dshmarket global catalog route, found ${matches}`)
+  }
+  return source.replace(ORIGINAL_GLOBAL_CATALOG, PATCHED_GLOBAL_CATALOG)
+}
+
+export function prepareDshMarketRoutes(target = dshMarketRoutesPath) {
+  const source = readFileSync(target, 'utf8')
+  const patched = patchDshMarketRoutes(source)
   if (patched !== source) writeFileSync(target, patched)
 }
 
@@ -206,5 +231,6 @@ if (isMainModule()) {
   prepareApiProxy()
   prepareSettingsMarketNavIcon()
   prepareDshManifest()
+  prepareDshMarketRoutes()
   prepareWindowsNode()
 }

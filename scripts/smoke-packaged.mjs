@@ -133,7 +133,17 @@ const service = startDshService({
 
 try {
   const url = await service.ready
-  const response = await fetch(url)
+  const launchResponse = await fetch(url, { redirect: "manual" })
+  if (launchResponse.status !== 303) {
+    throw new Error("Packaged DeepSeek Harness launch URL returned HTTP " + launchResponse.status)
+  }
+  const cookie = launchResponse.headers.get("set-cookie")
+  if (!cookie) {
+    throw new Error("Packaged DeepSeek Harness launch URL did not issue an authentication cookie")
+  }
+  const cleanUrl = new URL(url)
+  cleanUrl.search = ""
+  const response = await fetch(cleanUrl, { headers: { cookie } })
   if (!response.ok) {
     throw new Error(`Packaged DeepSeek Harness returned HTTP ${response.status}`)
   }
@@ -144,7 +154,7 @@ try {
   if (!html.includes('dshmarket/client')) {
     throw new Error('Packaged app did not inject the plugin market client')
   }
-  const marketResponse = await fetch(`${url}/dsh-market/status`)
+  const marketResponse = await fetch(new URL("/dsh-market/status", cleanUrl), { headers: { cookie } })
   if (!marketResponse.ok) {
     throw new Error(`Packaged plugin market returned HTTP ${marketResponse.status}`)
   }

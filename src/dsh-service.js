@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const READY_PATTERN = /^dsh web: (http:\/\/127\.0\.0\.1:\d+)\b/m
+const READY_PATTERN = /^dsh web: (http:\/\/127\.0\.0\.1:\d+\S*)$/m
 
 export function resolveDshEntry() {
   return unpackedPath(fileURLToPath(import.meta.resolve('@deepseek-ai/dsh/lib/bin.js')))
@@ -92,6 +92,13 @@ export function buildDshEnvironment(environment, {
     [pathKey]: [bundledToolDirectory, environment[pathKey]].filter(Boolean).join(separator),
     DSH_DESKTOP_NODE_EXECUTABLE: nodeExecutable,
     DSH_DESKTOP_PNPM_CLI: bundledPnpmEntry,
+    ...(platform === 'darwin' ? {
+      NODE_OPTIONS: [
+        environment.NODE_OPTIONS,
+        '--max-old-space-size=8192',
+        '--use-system-ca',
+      ].filter(Boolean).join(' '),
+    } : {}),
     ...(platform === 'win32' ? {} : { ELECTRON_RUN_AS_NODE: '1' }),
   }
 }

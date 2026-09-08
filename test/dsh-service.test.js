@@ -23,6 +23,13 @@ test('extractReadyUrl reads the canonical loopback readiness URL', () => {
   )
 })
 
+test('extractReadyUrl preserves the upstream launch token', () => {
+  assert.equal(
+    extractReadyUrl('dsh web: http://127.0.0.1:60882/?token=launch-token\n'),
+    'http://127.0.0.1:60882/?token=launch-token',
+  )
+})
+
 test('extractReadyUrl ignores non-loopback output', () => {
   assert.equal(extractReadyUrl('dsh web: http://192.168.1.10:3080'), undefined)
 })
@@ -147,7 +154,7 @@ test('buildDshEnvironment exposes the bundled pnpm wrapper on macOS and Linux', 
     bundledPnpmEntry: '/app/node_modules/pnpm/bin/pnpm.cjs',
   }), {
     PATH: '/app/assets/bin:/usr/bin',
-    NODE_OPTIONS: '--trace-warnings',
+    NODE_OPTIONS: '--trace-warnings --max-old-space-size=8192 --use-system-ca',
     DSH_DESKTOP_NODE_EXECUTABLE: '/app/DeepSeek Harness',
     DSH_DESKTOP_PNPM_CLI: '/app/node_modules/pnpm/bin/pnpm.cjs',
     ELECTRON_RUN_AS_NODE: '1',

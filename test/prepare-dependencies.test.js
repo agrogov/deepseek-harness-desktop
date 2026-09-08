@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   encodeWindowsOpenCommand,
   patchDshManifest,
+  patchDshMarketRoutes,
   patchSettingsMarketNavIcon,
   patchWindowsPathOpener,
 } from '../scripts/prepare-dependencies.mjs'
@@ -72,4 +73,20 @@ test('DSH dependency fallback includes the bundled plugin market', () => {
     dshmarket: '1.40.0',
   })
   assert.equal(patchDshManifest(patched), patched)
+})
+
+test('dshmarket global catalog falls back to the npm catalog package', () => {
+  const source = `global: {
+        npmRegistry: DEFAULT_NPM_REGISTRY,
+        githubProxy: null,
+        catalog: [{ kind: 'url', url: CATALOG_OFFICIAL }],
+    },`
+  const patched = patchDshMarketRoutes(source)
+  assert.match(patched, /kind: 'npm', registry: DEFAULT_NPM_REGISTRY, pkg: CATALOG_PACKAGE/)
+  assert.match(patched, /kind: 'url', url: CATALOG_OFFICIAL/)
+  assert.equal(patchDshMarketRoutes(patched), patched)
+})
+
+test('dshmarket catalog patch fails loudly when upstream routing drifts', () => {
+  assert.throws(() => patchDshMarketRoutes('global: {}'), /Expected exactly one/)
 })
