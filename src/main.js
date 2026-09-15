@@ -127,6 +127,7 @@ function refreshMenus() {
     platform: process.platform,
     locale: app.getLocale(),
     updates,
+    showBrowserPane: () => browserBridge?.showPane(),
   })))
   if (process.platform === 'win32') {
     mainWindow?.setAutoHideMenuBar(trayAvailable)

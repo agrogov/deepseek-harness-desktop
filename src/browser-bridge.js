@@ -22,6 +22,7 @@ export class DesktopBrowserBridge {
     this.views = new Map()
     this.connections = new Set()
     this.toolbar = undefined
+    this.topInset = process.platform === 'darwin' ? 52 : 0
   }
 
   async start() {
@@ -215,6 +216,16 @@ export class DesktopBrowserBridge {
     return { restored }
   }
 
+  showPane() {
+    const entry = [...this.views.values()].find(candidate => candidate.visible) ?? [...this.views.values()][0]
+    if (!entry) return false
+    entry.visible = true
+    entry.view.setVisible(true)
+    this.layout()
+    this.syncToolbar()
+    return true
+  }
+
   ensureToolbar(win) {
     if (this.toolbar) return
     const toolbar = new this.WebContentsView({ webPreferences: { nodeIntegration: true, contextIsolation: false } })
@@ -271,8 +282,10 @@ export class DesktopBrowserBridge {
     const bounds = win.getContentBounds()
     const width = Math.min(Math.max(420, Math.round(bounds.width * this.paneWidth)), Math.max(320, bounds.width - 360))
     const toolbarHeight = this.toolbar ? 36 : 0
-    for (const entry of this.views.values()) entry.view.setBounds({ x: bounds.width - width, y: toolbarHeight, width, height: bounds.height - toolbarHeight })
-    this.toolbar?.setBounds({ x: bounds.width - width, y: 0, width, height: toolbarHeight })
+    const y = this.topInset
+    const height = Math.max(0, bounds.height - y - toolbarHeight)
+    for (const entry of this.views.values()) entry.view.setBounds({ x: bounds.width - width, y: y + toolbarHeight, width, height })
+    this.toolbar?.setBounds({ x: bounds.width - width, y, width, height: toolbarHeight })
     this.toolbar?.setVisible(true)
     this.setHarnessWidth(width)
   }

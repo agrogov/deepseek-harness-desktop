@@ -28,7 +28,7 @@ export function createUpdateMenuTemplate({ locale = 'en', state, enabled = true,
   ]
 }
 
-export function createApplicationMenuTemplate({ platform, locale = 'en', updates }) {
+export function createApplicationMenuTemplate({ platform, locale = 'en', updates, showBrowserPane }) {
   const chinese = locale.toLowerCase().startsWith('zh')
   if (platform === 'win32') {
     return [{ label: chinese ? '更新' : 'Updates', submenu: updates }]
@@ -52,6 +52,7 @@ export function createApplicationMenuTemplate({ platform, locale = 'en', updates
     }] : [{ role: 'fileMenu' }]),
     { role: 'editMenu' },
     { role: 'viewMenu' },
+    ...(showBrowserPane ? [{ label: chinese ? '浏览器' : 'Browser', submenu: [{ label: chinese ? '显示浏览器面板' : 'Show Browser Pane', accelerator: 'CommandOrControl+Shift+B', click: showBrowserPane }] }] : []),
     { role: 'windowMenu' },
     ...(platform === 'darwin' ? [] : [{ label: chinese ? '更新' : 'Updates', submenu: updates }]),
   ]
