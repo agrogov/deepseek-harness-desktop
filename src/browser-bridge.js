@@ -231,10 +231,26 @@ export class DesktopBrowserBridge {
     return true
   }
 
+  /**
+   * Return the shared right-hand area to DSH. DSH owns the Files panel, so we
+   * deliberately ask its real "Open sidebar" control to reveal it instead of
+   * maintaining a second, incomplete file browser in the desktop wrapper.
+   */
+  showFiles() {
+    for (const entry of this.views.values()) {
+      entry.visible = false
+      entry.view.setVisible(false)
+    }
+    this.toolbar?.setVisible(false)
+    this.restoreHarnessWidth()
+    this.openHarnessSidebar()
+    return true
+  }
+
   ensureToolbar(win) {
     if (this.toolbar) return
     const toolbar = new this.WebContentsView({ webPreferences: { nodeIntegration: true, contextIsolation: false } })
-    const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#27272a;color:#eee;font:14px -apple-system,sans-serif;display:flex;align-items:center;gap:6px;padding:3px 7px}button{border:0;border-radius:6px;background:#404045;color:#eee;width:28px;height:28px;font-size:17px}button:hover{background:#555}input{flex:1;min-width:0;height:26px;border:1px solid #555;border-radius:6px;background:#1d1d20;color:#eee;padding:0 9px;font-size:13px}</style><button id="back" title="Back">‹</button><button id="forward" title="Forward">›</button><button id="reload" title="Reload">↻</button><input id="url" placeholder="Enter URL"><button id="close" title="Close browser">×</button><script>const{ipcRenderer}=require('electron');for(const id of ['back','forward','reload','close'])document.getElementById(id).onclick=()=>ipcRenderer.send('dsh-browser-toolbar',{action:id});const input=document.getElementById('url');input.onkeydown=e=>{if(e.key==='Enter')ipcRenderer.send('dsh-browser-toolbar',{action:'navigate',url:input.value})};ipcRenderer.on('browser-state',(_,state)=>{if(document.activeElement!==input)input.value=state.url||'';document.getElementById('back').disabled=!state.canBack;document.getElementById('forward').disabled=!state.canForward})</script>`
+    const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#27272a;color:#eee;font:13px -apple-system,sans-serif;display:flex;align-items:center;gap:6px;padding:3px 7px}.tab{border:0;border-radius:6px;background:transparent;color:#b9b9c0;height:28px;padding:0 9px;font-size:13px}.tab:hover{background:#404045;color:#fff}.tab[aria-selected=true]{background:#404045;color:#fff;font-weight:600}.icon{border:0;border-radius:6px;background:#404045;color:#eee;width:28px;height:28px;font-size:17px}.icon:hover{background:#555}.divider{width:1px;height:20px;background:#555;margin:0 2px}input{flex:1;min-width:0;height:26px;border:1px solid #555;border-radius:6px;background:#1d1d20;color:#eee;padding:0 9px;font-size:13px}</style><button class="tab" id="files" title="Show Files">Files</button><button class="tab" id="browser" aria-selected="true" title="Show Browser">Browser</button><span class="divider"></span><button class="icon" id="back" title="Back">‹</button><button class="icon" id="forward" title="Forward">›</button><button class="icon" id="reload" title="Reload">↻</button><input id="url" placeholder="Enter URL"><button class="icon" id="close" title="Close browser">×</button><script>const{ipcRenderer}=require('electron');for(const id of ['files','browser','back','forward','reload','close'])document.getElementById(id).onclick=()=>ipcRenderer.send('dsh-browser-toolbar',{action:id});const input=document.getElementById('url');input.onkeydown=e=>{if(e.key==='Enter')ipcRenderer.send('dsh-browser-toolbar',{action:'navigate',url:input.value})};ipcRenderer.on('browser-state',(_,state)=>{if(document.activeElement!==input)input.value=state.url||'';document.getElementById('back').disabled=!state.canBack;document.getElementById('forward').disabled=!state.canForward})</script>`
     toolbar.webContents.on('ipc-message', (_event, channel, message) => {
       if (channel === 'dsh-browser-toolbar') this.handleToolbar(message)
     })
@@ -248,6 +264,12 @@ export class DesktopBrowserBridge {
     if (!entry || !message || typeof message.action !== 'string') return
     const contents = entry.view.webContents
     switch (message.action) {
+      case 'files':
+        this.showFiles()
+        return
+      case 'browser':
+        this.showPane()
+        return
       case 'back': if (contents.canGoBack()) contents.goBack(); break
       case 'forward': if (contents.canGoForward()) contents.goForward(); break
       case 'reload': contents.reload(); break
@@ -306,5 +328,20 @@ export class DesktopBrowserBridge {
     const contents = this.getWindow()?.webContents
     if (!contents || contents.isDestroyed?.() || typeof contents.executeJavaScript !== 'function') return
     void contents.executeJavaScript("document.getElementById('dsh-desktop-browser-pane')?.remove()").catch(() => {})
+  }
+
+  openHarnessSidebar() {
+    const contents = this.getWindow()?.webContents
+    if (!contents || contents.isDestroyed?.() || typeof contents.executeJavaScript !== 'function') return
+    // DSH owns the Files UI. Locate its accessible control instead of relying
+    // on generated client CSS class names.
+    const script = `(() => {
+      const label = element => [element.getAttribute('aria-label'), element.getAttribute('title'), element.textContent].filter(Boolean).join(' ')
+      const button = [...document.querySelectorAll('button,[role="button"]')]
+        .find(element => /open sidebar/i.test(label(element)))
+      if (button) { button.click(); return true }
+      return false
+    })()`
+    void contents.executeJavaScript(script).catch(() => {})
   }
 }
