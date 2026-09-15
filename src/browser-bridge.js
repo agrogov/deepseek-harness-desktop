@@ -164,6 +164,8 @@ export class DesktopBrowserBridge {
     for (const candidate of this.views.values()) candidate.view.setVisible(false)
     entry.visible = true
     entry.view.setVisible(true)
+    this.fileVisible = false
+    this.fileView?.setVisible(false)
     const win = this.getWindow()
     try { win?.contentView.removeChildView(entry.view); win?.contentView.addChildView(entry.view) } catch {}
     this.layout()
