@@ -57,6 +57,7 @@ async function launchFixture(t, options = {}) {
     nativeImage: { createFromPath: () => ({ setTemplateImage() {} }) },
     nativeTheme: { shouldUseDarkColors: false },
     shell: { async openExternal() {} },
+    WebContentsView: class {},
   }
   fixture.dsh = {
     startDshService() {

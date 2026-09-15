@@ -1,0 +1,238 @@
+import { createServer } from 'node:net'
+import { randomBytes } from 'node:crypto'
+import { mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
+
+const CDP_VERSION = '1.3'
+const MAX_RPC_BUFFER_BYTES = 16 * 1024 * 1024
+
+/**
+ * Owns browser-plugin WebContentsViews for the desktop shell. The Harness
+ * process reaches it over authenticated loopback JSON-RPC; no browser command
+ * is accepted until the caller proves it inherited this launch's random token.
+ */
+export class DesktopBrowserBridge {
+  constructor({ WebContentsView, getWindow, paneWidth = 0.46 }) {
+    this.WebContentsView = WebContentsView
+    this.getWindow = getWindow
+    this.paneWidth = paneWidth
+    this.token = randomBytes(24).toString('hex')
+    this.server = undefined
+    this.port = undefined
+    this.views = new Map()
+    this.connections = new Set()
+  }
+
+  async start() {
+    if (this.server) return this.environment()
+    this.server = createServer(socket => this.attach(socket))
+    this.server.unref()
+    await new Promise((resolve, reject) => {
+      this.server.once('error', reject)
+      this.server.listen(0, '127.0.0.1', resolve)
+    })
+    const address = this.server.address()
+    this.port = typeof address === 'object' && address ? address.port : undefined
+    if (!this.port) throw new Error('Desktop browser bridge did not receive a loopback port')
+    return this.environment()
+  }
+
+  environment() {
+    if (!this.port) throw new Error('Desktop browser bridge has not started')
+    return {
+      DSH_DESKTOP_BROWSER_RPC_PORT: String(this.port),
+      DSH_DESKTOP_BROWSER_RPC_TOKEN: this.token,
+    }
+  }
+
+  stop() {
+    for (const socket of this.connections) socket.destroy()
+    this.connections.clear()
+    for (const entry of this.views.values()) this.destroyEntry(entry)
+    this.views.clear()
+    this.restoreHarnessWidth()
+    this.server?.close()
+    this.server = undefined
+    this.port = undefined
+  }
+
+  attach(socket) {
+    this.connections.add(socket)
+    socket.setEncoding('utf8')
+    let buffer = ''
+    let authenticated = false
+    socket.on('error', () => {})
+    socket.on('close', () => this.connections.delete(socket))
+    socket.on('data', chunk => {
+      buffer += chunk
+      if (buffer.length > MAX_RPC_BUFFER_BYTES) return socket.destroy()
+      let nl
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl).trim()
+        buffer = buffer.slice(nl + 1)
+        if (!line) continue
+        let message
+        try { message = JSON.parse(line) } catch { socket.destroy(); return }
+        if (!authenticated) {
+          if (message?.op !== 'hello' || message.token !== this.token) { socket.destroy(); return }
+          authenticated = true
+          continue
+        }
+        void this.dispatch(message).then(
+          result => this.reply(socket, message.id, true, result),
+          error => this.reply(socket, message.id, false, undefined, error instanceof Error ? error.message : String(error)),
+        )
+      }
+    })
+  }
+
+  reply(socket, id, ok, result, err) {
+    if (typeof id !== 'number' || socket.destroyed) return
+    socket.write(JSON.stringify({ id, ok, ...(ok ? { result } : { err }) }) + '\n')
+  }
+
+  async dispatch(message) {
+    const viewId = message.viewId
+    switch (message.op) {
+      case 'ping': return { ready: true }
+      case 'groupView': return {}
+      case 'createView': return this.createView(viewId)
+      case 'destroyView': return this.destroyView(viewId)
+      case 'showView': return this.showView(viewId)
+      case 'command': return this.command(viewId, message.method, message.params)
+      case 'capture': return this.capture(viewId, message)
+      case 'download': return this.download(viewId, message.url, message.savePath)
+      case 'flushAuth': return this.flushAuth(viewId)
+      case 'restoreAuth': return this.restoreAuth(viewId, message.cookies)
+      default: throw new Error(`unknown browser bridge operation: ${String(message.op)}`)
+    }
+  }
+
+  createView(viewId) {
+    if (typeof viewId !== 'string') throw new Error('createView missing viewId')
+    if (this.views.has(viewId)) return {}
+    const win = this.getWindow()
+    if (!win || !this.WebContentsView) throw new Error('Desktop window is not available')
+    const view = new this.WebContentsView()
+    view.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/i.test(url)) {
+        void view.webContents.loadURL(url).catch(() => {})
+      }
+      return { action: 'deny' }
+    })
+    view.webContents.debugger.attach(CDP_VERSION)
+    view.setVisible(false)
+    win.contentView.addChildView(view)
+    this.views.set(viewId, { view, visible: false })
+    this.layout()
+    return {}
+  }
+
+  destroyView(viewId) {
+    const entry = this.entry(viewId)
+    this.destroyEntry(entry)
+    this.views.delete(viewId)
+    this.layout()
+    return {}
+  }
+
+  destroyEntry(entry) {
+    try { entry.view.webContents.debugger.detach() } catch {}
+    try { entry.view.webContents.close() } catch {}
+    try { this.getWindow()?.contentView.removeChildView(entry.view) } catch {}
+  }
+
+  showView(viewId) {
+    const entry = this.entry(viewId)
+    for (const candidate of this.views.values()) candidate.view.setVisible(false)
+    entry.visible = true
+    entry.view.setVisible(true)
+    const win = this.getWindow()
+    try { win?.contentView.removeChildView(entry.view); win?.contentView.addChildView(entry.view) } catch {}
+    this.layout()
+    return {}
+  }
+
+  async command(viewId, method, params = {}) {
+    if (typeof method !== 'string') throw new Error('command missing method')
+    return this.entry(viewId).view.webContents.debugger.sendCommand(method, params)
+  }
+
+  async capture(viewId, options) {
+    const image = await this.entry(viewId).view.webContents.capturePage()
+    const format = options.format === 'jpeg' ? 'jpeg' : 'png'
+    const buffer = format === 'jpeg' ? image.toJPEG(typeof options.quality === 'number' ? options.quality : 80) : image.toPNG()
+    if (!buffer.length) throw new Error('capture produced no image')
+    return { base64: buffer.toString('base64'), mime: format === 'jpeg' ? 'image/jpeg' : 'image/png' }
+  }
+
+  async download(viewId, url, savePath) {
+    if (typeof url !== 'string' || typeof savePath !== 'string') throw new Error('download missing url or savePath')
+    const response = await this.command(viewId, 'Runtime.evaluate', {
+      expression: `(async () => { const r = await fetch(${JSON.stringify(url)}, { credentials: 'include' }); if (!r.ok) throw new Error('HTTP ' + r.status); const b = new Uint8Array(await r.arrayBuffer()); let s=''; for (let i=0;i<b.length;i+=0x8000) s += String.fromCharCode(...b.subarray(i,i+0x8000)); return btoa(s) })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    })
+    const base64 = response?.result?.value
+    if (typeof base64 !== 'string') throw new Error('download failed')
+    const temporary = `${savePath}.part`
+    mkdirSync(dirname(savePath), { recursive: true })
+    writeFileSync(temporary, Buffer.from(base64, 'base64'))
+    try { renameSync(temporary, savePath) } catch (error) { try { unlinkSync(temporary) } catch {}; throw error }
+    return { path: savePath }
+  }
+
+  async flushAuth(viewId) {
+    const cookies = await this.entry(viewId).view.webContents.session.cookies.get({})
+    return { cookies: cookies.map(cookie => ({
+      url: `http${cookie.secure ? 's' : ''}://${cookie.domain?.replace(/^\./, '') ?? ''}${cookie.path ?? '/'}`,
+      name: cookie.name,
+      value: cookie.value,
+      domain: cookie.domain ?? '',
+      path: cookie.path ?? '/',
+      secure: cookie.secure,
+      httpOnly: cookie.httpOnly,
+      expirationDate: cookie.expirationDate,
+    })) }
+  }
+
+  async restoreAuth(viewId, cookies) {
+    if (!Array.isArray(cookies)) throw new Error('restoreAuth missing cookies array')
+    let restored = 0
+    for (const cookie of cookies) {
+      if (!cookie || typeof cookie.url !== 'string' || typeof cookie.name !== 'string' || typeof cookie.value !== 'string') continue
+      await this.entry(viewId).view.webContents.session.cookies.set(cookie)
+      restored++
+    }
+    return { restored }
+  }
+
+  entry(viewId) {
+    if (typeof viewId !== 'string') throw new Error('browser operation missing viewId')
+    const entry = this.views.get(viewId)
+    if (!entry) throw new Error(`unknown browser view ${viewId}`)
+    return entry
+  }
+
+  layout() {
+    const win = this.getWindow()
+    const visible = [...this.views.values()].find(entry => entry.visible) ?? [...this.views.values()][0]
+    if (!win || !visible) { this.restoreHarnessWidth(); return }
+    const bounds = win.getContentBounds()
+    const width = Math.min(Math.max(420, Math.round(bounds.width * this.paneWidth)), Math.max(320, bounds.width - 360))
+    for (const entry of this.views.values()) entry.view.setBounds({ x: bounds.width - width, y: 0, width, height: bounds.height })
+    this.setHarnessWidth(width)
+  }
+
+  setHarnessWidth(width) {
+    const contents = this.getWindow()?.webContents
+    if (!contents || contents.isDestroyed?.() || typeof contents.executeJavaScript !== 'function') return
+    void contents.executeJavaScript(`(() => { let s=document.getElementById('dsh-desktop-browser-pane'); if (!s) { s=document.createElement('style'); s.id='dsh-desktop-browser-pane'; document.head.appendChild(s) }; s.textContent='#root { width: calc(100% - ${width}px) !important; max-width: calc(100% - ${width}px) !important; }'; })()`).catch(() => {})
+  }
+
+  restoreHarnessWidth() {
+    const contents = this.getWindow()?.webContents
+    if (!contents || contents.isDestroyed?.() || typeof contents.executeJavaScript !== 'function') return
+    void contents.executeJavaScript("document.getElementById('dsh-desktop-browser-pane')?.remove()").catch(() => {})
+  }
+}

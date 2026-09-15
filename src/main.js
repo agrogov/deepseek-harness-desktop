@@ -10,8 +10,10 @@ import {
   nativeTheme,
   shell,
   Tray,
+  WebContentsView,
 } from 'electron'
 import { startDshService } from './dsh-service.js'
+import { DesktopBrowserBridge } from './browser-bridge.js'
 import { applyMacTitleBarStyle } from './mac-titlebar.js'
 import { createWindowOptions } from './window-options.js'
 import { createTrayMenuTemplate, shouldHideWindowOnClose } from './window-lifecycle.js'
@@ -32,6 +34,7 @@ let tray
 let trayAvailable = false
 let isQuitting = false
 let updateService
+let browserBridge
 
 app.setName(APP_NAME)
 
@@ -89,6 +92,7 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = undefined
   })
+  mainWindow.on('resize', () => browserBridge?.layout())
 
   return mainWindow.loadFile(STARTUP_PAGE)
 }
@@ -170,6 +174,11 @@ async function configureUpdates() {
 
 async function launch() {
   const startupReady = createWindow()
+  browserBridge = new DesktopBrowserBridge({
+    WebContentsView,
+    getWindow: () => mainWindow,
+  })
+  const browserEnvironment = await browserBridge.start()
   try {
     createTray()
   } catch (error) {
@@ -187,6 +196,7 @@ async function launch() {
       ...process.env,
       NODE_OPTIONS: '',
       DSH_DESKTOP: '1',
+      ...browserEnvironment,
     },
   })
 
@@ -237,4 +247,5 @@ app.on('before-quit', () => {
   isQuitting = true
   updateService?.stop()
   service?.stop()
+  browserBridge?.stop()
 })
