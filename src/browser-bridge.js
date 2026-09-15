@@ -2,6 +2,7 @@ import { createServer } from 'node:net'
 import { randomBytes } from 'node:crypto'
 import { mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { FILE_BROWSER_HTML } from './file-browser-view.js'
 
 const CDP_VERSION = '1.3'
 const MAX_RPC_BUFFER_BYTES = 16 * 1024 * 1024
@@ -22,6 +23,8 @@ export class DesktopBrowserBridge {
     this.views = new Map()
     this.connections = new Set()
     this.toolbar = undefined
+    this.fileView = undefined
+    this.fileVisible = false
     // BrowserWindow content already includes macOS title-bar space. Align the
     // embedded pane with DSH's own 24px content inset instead of reserving it twice.
     this.topInset = process.platform === 'darwin' ? 24 : 0
@@ -56,7 +59,11 @@ export class DesktopBrowserBridge {
     this.views.clear()
     try { this.toolbar?.webContents.close() } catch {}
     try { this.getWindow()?.contentView.removeChildView(this.toolbar) } catch {}
+    try { this.fileView?.webContents.close() } catch {}
+    try { this.getWindow()?.contentView.removeChildView(this.fileView) } catch {}
     this.toolbar = undefined
+    this.fileView = undefined
+    this.fileVisible = false
     this.restoreHarnessWidth()
     this.server?.close()
     this.server = undefined
@@ -228,27 +235,37 @@ export class DesktopBrowserBridge {
     if (!entry) return false
     entry.visible = true
     entry.view.setVisible(true)
+    this.fileVisible = false
+    this.fileView?.setVisible(false)
     this.removeHarnessBrowserReturn()
     this.layout()
     this.syncToolbar()
     return true
   }
 
-  /**
-   * Return the shared right-hand area to DSH. DSH owns the Files panel, so we
-   * deliberately ask its real "Open sidebar" control to reveal it instead of
-   * maintaining a second, incomplete file browser in the desktop wrapper.
-   */
+  /** Show a real, navigable filesystem view in the shared right-side pane. */
   showFiles() {
-    for (const entry of this.views.values()) {
-      entry.visible = false
-      entry.view.setVisible(false)
-    }
-    this.toolbar?.setVisible(false)
-    this.restoreHarnessWidth()
-    this.installHarnessBrowserReturn()
-    this.openHarnessSidebar()
+    const win = this.getWindow()
+    if (!win || !this.WebContentsView) return false
+    for (const entry of this.views.values()) { entry.visible = false; entry.view.setVisible(false) }
+    this.ensureToolbar(win)
+    this.ensureFileView(win)
+    this.fileVisible = true
+    this.fileView?.setVisible(true)
+    this.removeHarnessBrowserReturn()
+    this.layout()
+    this.syncToolbar()
     return true
+  }
+
+  ensureFileView(win) {
+    if (this.fileView) return
+    const view = new this.WebContentsView({ webPreferences: { nodeIntegration: true, contextIsolation: false } })
+    view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    view.webContents.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(FILE_BROWSER_HTML)).catch(() => {})
+    view.setVisible(false)
+    win.contentView.addChildView(view)
+    this.fileView = view
   }
 
   ensureToolbar(win) {
@@ -264,38 +281,33 @@ export class DesktopBrowserBridge {
   }
 
   handleToolbar(message) {
+    if (!message || typeof message.action !== 'string') return
+    if (message.action === 'files') { this.showFiles(); return }
+    if (message.action === 'browser') { this.showPane(); return }
+    if (this.fileVisible && this.fileView) {
+      if (message.action === 'back') void this.fileView.webContents.executeJavaScript('window.__dshFileParent?.()').catch(() => {})
+      else if (message.action === 'reload') this.fileView.webContents.reload()
+      else if (message.action === 'navigate' && typeof message.url === 'string' && message.url.trim()) void this.fileView.webContents.executeJavaScript('window.__dshFileNavigate?.(' + JSON.stringify(message.url) + ')').catch(() => {})
+      return
+    }
     const entry = [...this.views.values()].find(candidate => candidate.visible) ?? [...this.views.values()][0]
-    if (!entry || !message || typeof message.action !== 'string') return
+    if (!entry) return
     const contents = entry.view.webContents
     switch (message.action) {
-      case 'files':
-        this.showFiles()
-        return
-      case 'browser':
-        this.showPane()
-        return
       case 'back': if (contents.canGoBack()) contents.goBack(); break
       case 'forward': if (contents.canGoForward()) contents.goForward(); break
       case 'reload': contents.reload(); break
-      case 'close':
-        entry.view.setVisible(false)
-        entry.visible = false
-        this.toolbar?.setVisible(false)
-        this.restoreHarnessWidth()
-        return
-      case 'navigate': {
-        if (typeof message.url !== 'string' || message.url.trim() === '') return
-        const url = /^[a-z][a-z0-9+.-]*:/i.test(message.url) ? message.url : 'https://' + message.url
-        void contents.loadURL(url).catch(() => {})
-        break
-      }
+      case 'close': entry.view.setVisible(false); entry.visible = false; this.toolbar?.setVisible(false); this.restoreHarnessWidth(); return
+      case 'navigate': { if (typeof message.url !== 'string' || message.url.trim() === '') return; const url = /^[a-z][a-z0-9+.-]*:/i.test(message.url) ? message.url : 'https://' + message.url; void contents.loadURL(url).catch(() => {}); break }
     }
     this.syncToolbar()
   }
 
   syncToolbar() {
+    if (!this.toolbar) return
+    if (this.fileVisible) { try { this.toolbar.webContents.send('browser-state', { url: 'Files', canBack: true, canForward: false }) } catch {}; return }
     const entry = [...this.views.values()].find(candidate => candidate.visible) ?? [...this.views.values()][0]
-    if (!entry || !this.toolbar) return
+    if (!entry) return
     const contents = entry.view.webContents
     try { this.toolbar.webContents.send('browser-state', { url: contents.getURL(), canBack: contents.canGoBack(), canForward: contents.canGoForward() }) } catch {}
   }
@@ -310,13 +322,14 @@ export class DesktopBrowserBridge {
   layout() {
     const win = this.getWindow()
     const visible = [...this.views.values()].find(entry => entry.visible)
-    if (!win || !visible) { this.restoreHarnessWidth(); return }
+    if (!win || (!visible && !this.fileVisible)) { this.restoreHarnessWidth(); return }
     const bounds = win.getContentBounds()
     const width = Math.min(Math.max(420, Math.round(bounds.width * this.paneWidth)), Math.max(320, bounds.width - 360))
     const toolbarHeight = this.toolbar ? 36 : 0
     const y = this.topInset
     const height = Math.max(0, bounds.height - y - toolbarHeight)
     for (const entry of this.views.values()) entry.view.setBounds({ x: bounds.width - width, y: y + toolbarHeight, width, height })
+    this.fileView?.setBounds({ x: bounds.width - width, y: y + toolbarHeight, width, height })
     this.toolbar?.setBounds({ x: bounds.width - width, y, width, height: toolbarHeight })
     this.toolbar?.setVisible(true)
     this.setHarnessWidth(width)
