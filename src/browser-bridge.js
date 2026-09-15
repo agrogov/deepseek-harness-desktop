@@ -227,7 +227,7 @@ export class DesktopBrowserBridge {
   setHarnessWidth(width) {
     const contents = this.getWindow()?.webContents
     if (!contents || contents.isDestroyed?.() || typeof contents.executeJavaScript !== 'function') return
-    void contents.executeJavaScript(`(() => { let s=document.getElementById('dsh-desktop-browser-pane'); if (!s) { s=document.createElement('style'); s.id='dsh-desktop-browser-pane'; document.head.appendChild(s) }; s.textContent='#root { width: calc(100% - ${width}px) !important; max-width: calc(100% - ${width}px) !important; }'; })()`).catch(() => {})
+    void contents.executeJavaScript(`(() => { let s=document.getElementById('dsh-desktop-browser-pane'); if (!s) { s=document.createElement('style'); s.id='dsh-desktop-browser-pane'; document.head.appendChild(s) }; s.textContent='html, body { pointer-events: none !important; } #root { width: calc(100% - ${width}px) !important; max-width: calc(100% - ${width}px) !important; pointer-events: auto !important; }'; })()`).catch(() => {})
   }
 
   restoreHarnessWidth() {
