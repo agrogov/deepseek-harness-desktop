@@ -22,7 +22,9 @@ export class DesktopBrowserBridge {
     this.views = new Map()
     this.connections = new Set()
     this.toolbar = undefined
-    this.topInset = process.platform === 'darwin' ? 52 : 0
+    // BrowserWindow content already includes macOS title-bar space. Align the
+    // embedded pane with DSH's own 24px content inset instead of reserving it twice.
+    this.topInset = process.platform === 'darwin' ? 24 : 0
   }
 
   async start() {
