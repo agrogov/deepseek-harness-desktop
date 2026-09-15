@@ -217,7 +217,12 @@ export class DesktopBrowserBridge {
   }
 
   showPane() {
-    const entry = [...this.views.values()].find(candidate => candidate.visible) ?? [...this.views.values()][0]
+    let entry = [...this.views.values()].find(candidate => candidate.visible) ?? [...this.views.values()][0]
+    if (!entry) {
+      const id = 'desktop-manual-browser'
+      this.createView(id)
+      entry = this.views.get(id)
+    }
     if (!entry) return false
     entry.visible = true
     entry.view.setVisible(true)
