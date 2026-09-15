@@ -5,6 +5,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   Menu,
   nativeImage,
   nativeTheme,
@@ -180,6 +181,7 @@ async function launch() {
     getWindow: () => mainWindow,
   })
   const browserEnvironment = await browserBridge.start()
+  globalShortcut.register('CommandOrControl+Shift+B', () => browserBridge?.showPane())
   try {
     createTray()
   } catch (error) {
@@ -249,4 +251,5 @@ app.on('before-quit', () => {
   updateService?.stop()
   service?.stop()
   browserBridge?.stop()
+  globalShortcut.unregister('CommandOrControl+Shift+B')
 })

@@ -47,6 +47,7 @@ async function launchFixture(t, options = {}) {
   fixture.electron = {
     app, BrowserWindow, Tray,
     dialog: { async showMessageBox(value) { fixture.dialogs.push(value); return { response: 0 } } },
+    globalShortcut: { register() {}, unregister() {} },
     Menu: {
       buildFromTemplate: value => value,
       setApplicationMenu(value) {
