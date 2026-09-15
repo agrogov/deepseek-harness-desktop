@@ -249,7 +249,8 @@ export class DesktopBrowserBridge {
       case 'close':
         entry.view.setVisible(false)
         entry.visible = false
-        this.layout()
+        this.toolbar?.setVisible(false)
+        this.restoreHarnessWidth()
         return
       case 'navigate': {
         if (typeof message.url !== 'string' || message.url.trim() === '') return
@@ -277,7 +278,7 @@ export class DesktopBrowserBridge {
 
   layout() {
     const win = this.getWindow()
-    const visible = [...this.views.values()].find(entry => entry.visible) ?? [...this.views.values()][0]
+    const visible = [...this.views.values()].find(entry => entry.visible)
     if (!win || !visible) { this.restoreHarnessWidth(); return }
     const bounds = win.getContentBounds()
     const width = Math.min(Math.max(420, Math.round(bounds.width * this.paneWidth)), Math.max(320, bounds.width - 360))
