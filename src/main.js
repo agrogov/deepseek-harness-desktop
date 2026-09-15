@@ -72,6 +72,11 @@ function createWindow() {
   })
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url === 'dsh-desktop://browser') {
+      event.preventDefault()
+      browserBridge?.showPane()
+      return
+    }
     const currentUrl = mainWindow?.webContents.getURL()
     if (currentUrl && new URL(url).origin !== new URL(currentUrl).origin) {
       event.preventDefault()

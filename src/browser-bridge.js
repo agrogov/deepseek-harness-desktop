@@ -226,6 +226,7 @@ export class DesktopBrowserBridge {
     if (!entry) return false
     entry.visible = true
     entry.view.setVisible(true)
+    this.removeHarnessBrowserReturn()
     this.layout()
     this.syncToolbar()
     return true
@@ -243,6 +244,7 @@ export class DesktopBrowserBridge {
     }
     this.toolbar?.setVisible(false)
     this.restoreHarnessWidth()
+    this.installHarnessBrowserReturn()
     this.openHarnessSidebar()
     return true
   }
@@ -343,5 +345,35 @@ export class DesktopBrowserBridge {
       return false
     })()`
     void contents.executeJavaScript(script).catch(() => {})
+  }
+
+  installHarnessBrowserReturn() {
+    const contents = this.getWindow()?.webContents
+    if (!contents || contents.isDestroyed?.() || typeof contents.executeJavaScript !== 'function') return
+    const script = `(() => {
+      document.getElementById('dsh-desktop-browser-return')?.remove()
+      const button = document.createElement('button')
+      button.id = 'dsh-desktop-browser-return'
+      button.type = 'button'
+      button.textContent = 'Browser'
+      button.title = 'Show Browser'
+      button.setAttribute('aria-label', 'Show Browser')
+      button.onclick = () => { location.href = 'dsh-desktop://browser' }
+      Object.assign(button.style, {
+        position: 'fixed', top: '14px', right: '68px', zIndex: '2147483647',
+        border: '0', borderRadius: '10px', padding: '7px 11px',
+        background: 'var(--dsw-alias-button-floating-fill, #3f3f46)',
+        color: 'var(--dsw-alias-label-primary, #fff)', font: '500 13px -apple-system, sans-serif',
+        cursor: 'pointer'
+      })
+      document.body.append(button)
+    })()`
+    void contents.executeJavaScript(script).catch(() => {})
+  }
+
+  removeHarnessBrowserReturn() {
+    const contents = this.getWindow()?.webContents
+    if (!contents || contents.isDestroyed?.() || typeof contents.executeJavaScript !== 'function') return
+    void contents.executeJavaScript(`document.getElementById('dsh-desktop-browser-return')?.remove()`).catch(() => {})
   }
 }
