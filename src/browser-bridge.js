@@ -218,9 +218,9 @@ export class DesktopBrowserBridge {
   ensureToolbar(win) {
     if (this.toolbar) return
     const toolbar = new this.WebContentsView({ webPreferences: { nodeIntegration: true, contextIsolation: false } })
-    const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#27272a;color:#eee;font:14px -apple-system,sans-serif;display:flex;align-items:center;gap:7px;padding:6px 8px}button{border:0;border-radius:6px;background:#404045;color:#eee;width:30px;height:30px;font-size:18px}button:hover{background:#555}input{flex:1;min-width:0;height:28px;border:1px solid #555;border-radius:6px;background:#1d1d20;color:#eee;padding:0 9px;font-size:13px}</style><button id="back" title="Back">‹</button><button id="forward" title="Forward">›</button><button id="reload" title="Reload">↻</button><input id="url" placeholder="Enter URL"><button id="close" title="Close browser">×</button><script>const{ipcRenderer}=require('electron');for(const id of ['back','forward','reload','close'])document.getElementById(id).onclick=()=>ipcRenderer.send('dsh-browser-toolbar',{action:id});const input=document.getElementById('url');input.onkeydown=e=>{if(e.key==='Enter')ipcRenderer.send('dsh-browser-toolbar',{action:'navigate',url:input.value})};ipcRenderer.on('browser-state',(_,state)=>{if(document.activeElement!==input)input.value=state.url||'';document.getElementById('back').disabled=!state.canBack;document.getElementById('forward').disabled=!state.canForward})</script>`
-    toolbar.webContents.on('ipc-message', (_event, channel, args) => {
-      if (channel === 'dsh-browser-toolbar') this.handleToolbar(args[0])
+    const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#27272a;color:#eee;font:14px -apple-system,sans-serif;display:flex;align-items:center;gap:6px;padding:3px 7px}button{border:0;border-radius:6px;background:#404045;color:#eee;width:28px;height:28px;font-size:17px}button:hover{background:#555}input{flex:1;min-width:0;height:26px;border:1px solid #555;border-radius:6px;background:#1d1d20;color:#eee;padding:0 9px;font-size:13px}</style><button id="back" title="Back">‹</button><button id="forward" title="Forward">›</button><button id="reload" title="Reload">↻</button><input id="url" placeholder="Enter URL"><button id="close" title="Close browser">×</button><script>const{ipcRenderer}=require('electron');for(const id of ['back','forward','reload','close'])document.getElementById(id).onclick=()=>ipcRenderer.send('dsh-browser-toolbar',{action:id});const input=document.getElementById('url');input.onkeydown=e=>{if(e.key==='Enter')ipcRenderer.send('dsh-browser-toolbar',{action:'navigate',url:input.value})};ipcRenderer.on('browser-state',(_,state)=>{if(document.activeElement!==input)input.value=state.url||'';document.getElementById('back').disabled=!state.canBack;document.getElementById('forward').disabled=!state.canForward})</script>`
+    toolbar.webContents.on('ipc-message', (_event, channel, message) => {
+      if (channel === 'dsh-browser-toolbar') this.handleToolbar(message)
     })
     toolbar.webContents.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).catch(() => {})
     win.contentView.addChildView(toolbar)
@@ -270,7 +270,7 @@ export class DesktopBrowserBridge {
     if (!win || !visible) { this.restoreHarnessWidth(); return }
     const bounds = win.getContentBounds()
     const width = Math.min(Math.max(420, Math.round(bounds.width * this.paneWidth)), Math.max(320, bounds.width - 360))
-    const toolbarHeight = this.toolbar ? 44 : 0
+    const toolbarHeight = this.toolbar ? 36 : 0
     for (const entry of this.views.values()) entry.view.setBounds({ x: bounds.width - width, y: toolbarHeight, width, height: bounds.height - toolbarHeight })
     this.toolbar?.setBounds({ x: bounds.width - width, y: 0, width, height: toolbarHeight })
     this.toolbar?.setVisible(true)
