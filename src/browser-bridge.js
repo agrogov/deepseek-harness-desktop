@@ -17,6 +17,8 @@ export class DesktopBrowserBridge {
     this.WebContentsView = WebContentsView
     this.getWindow = getWindow
     this.paneWidth = paneWidth
+    this.paneWidthPx = undefined
+    this.resizeOrigin = undefined
     this.token = randomBytes(24).toString('hex')
     this.server = undefined
     this.port = undefined
@@ -273,7 +275,7 @@ export class DesktopBrowserBridge {
   ensureToolbar(win) {
     if (this.toolbar) return
     const toolbar = new this.WebContentsView({ webPreferences: { nodeIntegration: true, contextIsolation: false } })
-    const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#27272a;color:#eee;font:13px -apple-system,sans-serif;display:flex;align-items:center;gap:6px;padding:3px 7px}.tab{border:0;border-radius:6px;background:transparent;color:#b9b9c0;height:28px;padding:0 9px;font-size:13px}.tab:hover{background:#404045;color:#fff}.tab[aria-selected=true]{background:#404045;color:#fff;font-weight:600}.icon{border:0;border-radius:6px;background:#404045;color:#eee;width:28px;height:28px;font-size:17px}.icon:hover{background:#555}.divider{width:1px;height:20px;background:#555;margin:0 2px}input{flex:1;min-width:0;height:26px;border:1px solid #555;border-radius:6px;background:#1d1d20;color:#eee;padding:0 9px;font-size:13px}</style><button class="tab" id="files" title="Show Files">Files</button><button class="tab" id="browser" aria-selected="true" title="Show Browser">Browser</button><span class="divider"></span><button class="icon" id="back" title="Back">‹</button><button class="icon" id="forward" title="Forward">›</button><button class="icon" id="reload" title="Reload">↻</button><input id="url" placeholder="Enter URL"><button class="icon" id="close" title="Close browser">×</button><script>const{ipcRenderer}=require('electron');for(const id of ['files','browser','back','forward','reload','close'])document.getElementById(id).onclick=()=>ipcRenderer.send('dsh-browser-toolbar',{action:id});const input=document.getElementById('url');input.onkeydown=e=>{if(e.key==='Enter')ipcRenderer.send('dsh-browser-toolbar',{action:'navigate',url:input.value})};ipcRenderer.on('browser-state',(_,state)=>{if(document.activeElement!==input)input.value=state.url||'';document.getElementById('back').disabled=!state.canBack;document.getElementById('forward').disabled=!state.canForward})</script>`
+    const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#27272a;color:#eee;font:13px -apple-system,sans-serif;display:flex;align-items:center;gap:6px;padding:3px 7px}.resize{position:absolute;inset:0 auto 0 0;width:8px;cursor:col-resize;z-index:2}.tab{border:0;border-radius:6px;background:transparent;color:#b9b9c0;height:28px;padding:0 9px;font-size:13px}.tab:hover{background:#404045;color:#fff}.tab[aria-selected=true]{background:#404045;color:#fff;font-weight:600}.icon{border:0;border-radius:6px;background:#404045;color:#eee;width:28px;height:28px;font-size:17px}.icon:hover{background:#555}.divider{width:1px;height:20px;background:#555;margin:0 2px}input{flex:1;min-width:0;height:26px;border:1px solid #555;border-radius:6px;background:#1d1d20;color:#eee;padding:0 9px;font-size:13px}</style><div class="resize" id="resize" title="Drag to resize"></div><button class="tab" id="files" title="Show Files">Files</button><button class="tab" id="browser" aria-selected="true" title="Show Browser">Browser</button><span class="divider"></span><button class="icon" id="back" title="Back">‹</button><button class="icon" id="forward" title="Forward">›</button><button class="icon" id="reload" title="Reload">↻</button><input id="url" placeholder="Enter URL"><button class="icon" id="close" title="Close browser">×</button><script>const{ipcRenderer}=require('electron');let resizing=false;const grip=document.getElementById('resize');grip.onpointerdown=e=>{resizing=true;grip.setPointerCapture(e.pointerId);ipcRenderer.send('dsh-browser-toolbar',{action:'resize-start',x:e.screenX})};grip.onpointermove=e=>{if(resizing)ipcRenderer.send('dsh-browser-toolbar',{action:'resize',x:e.screenX})};grip.onpointerup=e=>{resizing=false;ipcRenderer.send('dsh-browser-toolbar',{action:'resize-end'})};for(const id of ['files','browser','back','forward','reload','close'])document.getElementById(id).onclick=()=>ipcRenderer.send('dsh-browser-toolbar',{action:id});const input=document.getElementById('url');input.onkeydown=e=>{if(e.key==='Enter')ipcRenderer.send('dsh-browser-toolbar',{action:'navigate',url:input.value})};ipcRenderer.on('browser-state',(_,state)=>{if(document.activeElement!==input)input.value=state.url||'';document.getElementById('back').disabled=!state.canBack;document.getElementById('forward').disabled=!state.canForward})</script>`
     toolbar.webContents.on('ipc-message', (_event, channel, message) => {
       if (channel === 'dsh-browser-toolbar') this.handleToolbar(message)
     })
@@ -284,6 +286,9 @@ export class DesktopBrowserBridge {
 
   handleToolbar(message) {
     if (!message || typeof message.action !== 'string') return
+    if (message.action === 'resize-start' && typeof message.x === 'number') { this.resizeOrigin = { x: message.x, width: this.currentPaneWidth() }; return }
+    if (message.action === 'resize' && typeof message.x === 'number' && this.resizeOrigin) { this.paneWidthPx = this.resizeOrigin.width + this.resizeOrigin.x - message.x; this.layout(); return }
+    if (message.action === 'resize-end') { this.resizeOrigin = undefined; return }
     if (message.action === 'files') { this.showFiles(); return }
     if (message.action === 'browser') { this.showPane(); return }
     if (this.fileVisible && this.fileView) {
@@ -321,12 +326,18 @@ export class DesktopBrowserBridge {
     return entry
   }
 
+  currentPaneWidth() {
+    const bounds = this.getWindow()?.getContentBounds()
+    if (!bounds) return this.paneWidthPx ?? 420
+    return Math.min(Math.max(320, this.paneWidthPx ?? Math.round(bounds.width * this.paneWidth)), Math.max(320, bounds.width - 360))
+  }
+
   layout() {
     const win = this.getWindow()
     const visible = [...this.views.values()].find(entry => entry.visible)
     if (!win || (!visible && !this.fileVisible)) { this.restoreHarnessWidth(); return }
     const bounds = win.getContentBounds()
-    const width = Math.min(Math.max(420, Math.round(bounds.width * this.paneWidth)), Math.max(320, bounds.width - 360))
+    const width = Math.min(Math.max(320, this.paneWidthPx ?? Math.round(bounds.width * this.paneWidth)), Math.max(320, bounds.width - 360))
     const toolbarHeight = this.toolbar ? 36 : 0
     const y = this.topInset
     const height = Math.max(0, bounds.height - y - toolbarHeight)
