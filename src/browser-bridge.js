@@ -21,6 +21,7 @@ export class DesktopBrowserBridge {
     this.port = undefined
     this.views = new Map()
     this.connections = new Set()
+    this.toolbar = undefined
   }
 
   async start() {
@@ -50,6 +51,9 @@ export class DesktopBrowserBridge {
     this.connections.clear()
     for (const entry of this.views.values()) this.destroyEntry(entry)
     this.views.clear()
+    try { this.toolbar?.webContents.close() } catch {}
+    try { this.getWindow()?.contentView.removeChildView(this.toolbar) } catch {}
+    this.toolbar = undefined
     this.restoreHarnessWidth()
     this.server?.close()
     this.server = undefined
@@ -113,6 +117,7 @@ export class DesktopBrowserBridge {
     if (this.views.has(viewId)) return {}
     const win = this.getWindow()
     if (!win || !this.WebContentsView) throw new Error('Desktop window is not available')
+    this.ensureToolbar(win)
     const view = new this.WebContentsView()
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (/^https?:/i.test(url)) {
@@ -121,6 +126,8 @@ export class DesktopBrowserBridge {
       return { action: 'deny' }
     })
     view.webContents.debugger.attach(CDP_VERSION)
+    view.webContents.on('did-navigate', () => this.syncToolbar())
+    view.webContents.on('did-navigate-in-page', () => this.syncToolbar())
     view.setVisible(false)
     win.contentView.addChildView(view)
     this.views.set(viewId, { view, visible: false })
@@ -150,6 +157,7 @@ export class DesktopBrowserBridge {
     const win = this.getWindow()
     try { win?.contentView.removeChildView(entry.view); win?.contentView.addChildView(entry.view) } catch {}
     this.layout()
+    this.syncToolbar()
     return {}
   }
 
@@ -207,6 +215,48 @@ export class DesktopBrowserBridge {
     return { restored }
   }
 
+  ensureToolbar(win) {
+    if (this.toolbar) return
+    const toolbar = new this.WebContentsView({ webPreferences: { nodeIntegration: true, contextIsolation: false } })
+    const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#27272a;color:#eee;font:14px -apple-system,sans-serif;display:flex;align-items:center;gap:7px;padding:6px 8px}button{border:0;border-radius:6px;background:#404045;color:#eee;width:30px;height:30px;font-size:18px}button:hover{background:#555}input{flex:1;min-width:0;height:28px;border:1px solid #555;border-radius:6px;background:#1d1d20;color:#eee;padding:0 9px;font-size:13px}</style><button id="back" title="Back">‹</button><button id="forward" title="Forward">›</button><button id="reload" title="Reload">↻</button><input id="url" placeholder="Enter URL"><button id="close" title="Close browser">×</button><script>const{ipcRenderer}=require('electron');for(const id of ['back','forward','reload','close'])document.getElementById(id).onclick=()=>ipcRenderer.send('dsh-browser-toolbar',{action:id});const input=document.getElementById('url');input.onkeydown=e=>{if(e.key==='Enter')ipcRenderer.send('dsh-browser-toolbar',{action:'navigate',url:input.value})};ipcRenderer.on('browser-state',(_,state)=>{if(document.activeElement!==input)input.value=state.url||'';document.getElementById('back').disabled=!state.canBack;document.getElementById('forward').disabled=!state.canForward})</script>`
+    toolbar.webContents.on('ipc-message', (_event, channel, args) => {
+      if (channel === 'dsh-browser-toolbar') this.handleToolbar(args[0])
+    })
+    toolbar.webContents.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).catch(() => {})
+    win.contentView.addChildView(toolbar)
+    this.toolbar = toolbar
+  }
+
+  handleToolbar(message) {
+    const entry = [...this.views.values()].find(candidate => candidate.visible) ?? [...this.views.values()][0]
+    if (!entry || !message || typeof message.action !== 'string') return
+    const contents = entry.view.webContents
+    switch (message.action) {
+      case 'back': if (contents.canGoBack()) contents.goBack(); break
+      case 'forward': if (contents.canGoForward()) contents.goForward(); break
+      case 'reload': contents.reload(); break
+      case 'close':
+        entry.view.setVisible(false)
+        entry.visible = false
+        this.layout()
+        return
+      case 'navigate': {
+        if (typeof message.url !== 'string' || message.url.trim() === '') return
+        const url = /^[a-z][a-z0-9+.-]*:/i.test(message.url) ? message.url : 'https://' + message.url
+        void contents.loadURL(url).catch(() => {})
+        break
+      }
+    }
+    this.syncToolbar()
+  }
+
+  syncToolbar() {
+    const entry = [...this.views.values()].find(candidate => candidate.visible) ?? [...this.views.values()][0]
+    if (!entry || !this.toolbar) return
+    const contents = entry.view.webContents
+    try { this.toolbar.webContents.send('browser-state', { url: contents.getURL(), canBack: contents.canGoBack(), canForward: contents.canGoForward() }) } catch {}
+  }
+
   entry(viewId) {
     if (typeof viewId !== 'string') throw new Error('browser operation missing viewId')
     const entry = this.views.get(viewId)
@@ -220,7 +270,10 @@ export class DesktopBrowserBridge {
     if (!win || !visible) { this.restoreHarnessWidth(); return }
     const bounds = win.getContentBounds()
     const width = Math.min(Math.max(420, Math.round(bounds.width * this.paneWidth)), Math.max(320, bounds.width - 360))
-    for (const entry of this.views.values()) entry.view.setBounds({ x: bounds.width - width, y: 0, width, height: bounds.height })
+    const toolbarHeight = this.toolbar ? 44 : 0
+    for (const entry of this.views.values()) entry.view.setBounds({ x: bounds.width - width, y: toolbarHeight, width, height: bounds.height - toolbarHeight })
+    this.toolbar?.setBounds({ x: bounds.width - width, y: 0, width, height: toolbarHeight })
+    this.toolbar?.setVisible(true)
     this.setHarnessWidth(width)
   }
 
