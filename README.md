@@ -33,7 +33,7 @@ DeepSeek Harness Desktop packages the official DeepSeek Harness Web experience a
 This project focuses on desktop hosting. It does not fork, modify, inject into, or reimplement the Harness UI. Models, sessions, settings, plugins, and agent capabilities remain provided by the official `@deepseek-ai/dsh` package.
 
 > [!IMPORTANT]
-> This is an unofficial community wrapper and an early-stage project. It depends on the rapidly evolving `@deepseek-ai/dsh@0.1.1-rc.2`. The macOS builds are not Apple-notarized, and the Windows builds are not commercially code-signed.
+> This is an unofficial community wrapper and an early-stage project. It depends on the rapidly evolving `@deepseek-ai/dsh@0.1.5-rc.2`. The macOS builds are not Apple-notarized, and the Windows builds are not commercially code-signed.
 
 ## Download
 
@@ -188,7 +188,7 @@ Every release package is built on a matching GitHub-hosted runner and runs a pac
 
 ## Upstream version and license
 
-The project currently pins `@deepseek-ai/dsh@0.1.1-rc.2` for reproducible packaging.
+The project currently pins `@deepseek-ai/dsh@0.1.5-rc.2` for reproducible packaging.
 
 The desktop wrapper is available under the [MIT License](LICENSE). The bundled DeepSeek Harness, dsh-market, and pnpm packages are also MIT-licensed; their notices are preserved under [`third-party-licenses`](third-party-licenses).
 
