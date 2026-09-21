@@ -165,10 +165,17 @@ function sync() {
     writeFileSync(readmePath, updateReadmeVersion(source, currentVersion, targetVersion))
   }
 
+  // `--force` downgrades the upstream dshmarket optional-peer conflict to a
+  // warning while keeping npm's strict peer resolution, so peer-only packages
+  // stay in the lockfile for `npm ci` and the packaged runtime closure.
+  // npm 12 exports npm_config_allow_scripts to lifecycle scripts, which the
+  // project-scoped install below rejects; keep the rest of the npm config.
+  const npmEnvironment = { ...process.env }
+  delete npmEnvironment.npm_config_allow_scripts
   execFileSync(
     'npm',
-    ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'],
-    { cwd: root, stdio: 'inherit' },
+    ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund', '--force'],
+    { cwd: root, stdio: 'inherit', env: npmEnvironment },
   )
 
   const lockfile = JSON.parse(readFileSync(lockfilePath, 'utf8'))
