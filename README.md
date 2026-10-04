@@ -33,7 +33,7 @@ DeepSeek Harness Desktop packages the official DeepSeek Harness Web experience a
 This project focuses on desktop hosting. It does not fork, modify, inject into, or reimplement the Harness UI. Models, sessions, settings, plugins, and agent capabilities remain provided by the official `@deepseek-ai/dsh` package.
 
 > [!IMPORTANT]
-> This is an unofficial community wrapper and an early-stage project. It depends on the rapidly evolving `@deepseek-ai/dsh@0.1.5-rc.3`. The macOS builds are not Apple-notarized, and the Windows builds are not commercially code-signed.
+> This is an unofficial community wrapper and an early-stage project. It depends on the rapidly evolving `@deepseek-ai/dsh@0.2.0-rc.2`. The macOS builds are not Apple-notarized, and the Windows builds are not commercially code-signed.
 
 ## Download
 
@@ -100,7 +100,7 @@ Versions released before this feature need one manual desktop upgrade to gain th
 
 Open **Settings → Plugin Market** to browse and search the community catalog, inspect plugin sources, and install, update, disable, or remove plugins. The catalog is fetched live from [awesome-dsh-plugin.com](https://awesome-dsh-plugin.com), while package changes use the official `dsh plugin --profile web` workflow and remain in your local DSH profile.
 
-The desktop package includes `dshmarket@1.40.0` and a compatible pnpm runtime. Market-triggered process restart is disabled because application lifecycle remains owned by the desktop host; refresh the page or restart DeepSeek Harness Desktop when a plugin indicates that a restart is required.
+The desktop package includes `dshmarket@1.66.4` and a compatible pnpm runtime. Market-triggered process restart is disabled because application lifecycle remains owned by the desktop host; refresh the page or restart DeepSeek Harness Desktop when a plugin indicates that a restart is required.
 
 ### SSH and remote operations
 
@@ -188,7 +188,7 @@ Every release package is built on a matching GitHub-hosted runner and runs a pac
 
 ## Upstream version and license
 
-The project currently pins `@deepseek-ai/dsh@0.1.5-rc.3` for reproducible packaging.
+The project currently pins `@deepseek-ai/dsh@0.2.0-rc.2` for reproducible packaging.
 
 The desktop wrapper is available under the [MIT License](LICENSE). The bundled DeepSeek Harness, dsh-market, and pnpm packages are also MIT-licensed; their notices are preserved under [`third-party-licenses`](third-party-licenses).
 

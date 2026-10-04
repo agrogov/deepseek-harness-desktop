@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -11,19 +11,11 @@ const apiProxyPath = path.join(
   'lib',
   'index.js',
 )
-const settingsGeneralClientPath = path.join(
-  root,
-  'node_modules',
-  '@deepseek-ai',
-  'dsh-client-ui-settings-general',
-  'lib',
-  'client.js',
-)
 const dshManifestPath = path.join(root, 'node_modules', '@deepseek-ai', 'dsh', 'package.json')
 const dshMarketRoutesPath = path.join(root, 'node_modules', 'dshmarket', 'lib', 'regions.js')
 const windowsNodePath = path.join(root, 'assets', 'dsh-node.exe')
 const nodeLicensePath = path.join(root, 'third-party-licenses', 'nodejs-LICENSE')
-const DSH_MARKET_VERSION = '1.40.0'
+export const DSH_MARKET_VERSION = '1.66.4'
 
 const ORIGINAL_GLOBAL_CATALOG = "catalog: [{ kind: 'url', url: CATALOG_OFFICIAL }],"
 const PATCHED_GLOBAL_CATALOG = `catalog: [
@@ -51,80 +43,6 @@ const PATCHED_WINDOWS_OPENER = `async function openWindowsPath(path, signal, run
 \t], signal);
 }`
 
-const SETTINGS_NAV_ICON_START = `\t\tfunction navIcon(id) {
-\t\t\tif (id === "models")`
-
-const MARKET_NAV_ICON = `\t\tfunction navIcon(id) {
-\t\t\tif (id === "market") return (0, react_jsx_runtime.jsxs)("svg", {
-\t\t\t\tclassName: SettingsRoot_module_css_default.navIcon,
-\t\t\t\twidth: 16,
-\t\t\t\theight: 16,
-\t\t\t\tviewBox: "0 0 16 16",
-\t\t\t\tfill: "none",
-\t\t\t\t"aria-hidden": "true",
-\t\t\t\tchildren: [(0, react_jsx_runtime.jsxs)("g", {
-\t\t\t\t\tfill: "currentColor",
-\t\t\t\t\tchildren: [(0, react_jsx_runtime.jsx)("rect", {
-\t\t\t\t\t\tx: "1.96",
-\t\t\t\t\t\ty: "3.36",
-\t\t\t\t\t\twidth: "3.3",
-\t\t\t\t\t\theight: "3.3",
-\t\t\t\t\t\trx: "0.53"
-\t\t\t\t\t}), (0, react_jsx_runtime.jsx)("rect", {
-\t\t\t\t\t\tx: "5.71",
-\t\t\t\t\t\ty: "3.36",
-\t\t\t\t\t\twidth: "3.3",
-\t\t\t\t\t\theight: "3.3",
-\t\t\t\t\t\trx: "0.53"
-\t\t\t\t\t}), (0, react_jsx_runtime.jsx)("rect", {
-\t\t\t\t\t\tx: "1.96",
-\t\t\t\t\t\ty: "7.11",
-\t\t\t\t\t\twidth: "3.3",
-\t\t\t\t\t\theight: "3.3",
-\t\t\t\t\t\trx: "0.53"
-\t\t\t\t\t}), (0, react_jsx_runtime.jsx)("rect", {
-\t\t\t\t\t\tx: "5.71",
-\t\t\t\t\t\ty: "7.11",
-\t\t\t\t\t\twidth: "3.3",
-\t\t\t\t\t\theight: "3.3",
-\t\t\t\t\t\trx: "0.53"
-\t\t\t\t\t}), (0, react_jsx_runtime.jsx)("rect", {
-\t\t\t\t\t\tx: "9.46",
-\t\t\t\t\t\ty: "7.11",
-\t\t\t\t\t\twidth: "3.3",
-\t\t\t\t\t\theight: "3.3",
-\t\t\t\t\t\trx: "0.53"
-\t\t\t\t\t}), (0, react_jsx_runtime.jsx)("rect", {
-\t\t\t\t\t\tx: "1.96",
-\t\t\t\t\t\ty: "10.86",
-\t\t\t\t\t\twidth: "3.3",
-\t\t\t\t\t\theight: "3.3",
-\t\t\t\t\t\trx: "0.53"
-\t\t\t\t\t}), (0, react_jsx_runtime.jsx)("rect", {
-\t\t\t\t\t\tx: "5.71",
-\t\t\t\t\t\ty: "10.86",
-\t\t\t\t\t\twidth: "3.3",
-\t\t\t\t\t\theight: "3.3",
-\t\t\t\t\t\trx: "0.53"
-\t\t\t\t\t}), (0, react_jsx_runtime.jsx)("rect", {
-\t\t\t\t\t\tx: "9.46",
-\t\t\t\t\t\ty: "10.86",
-\t\t\t\t\t\twidth: "3.3",
-\t\t\t\t\t\theight: "3.3",
-\t\t\t\t\t\trx: "0.53"
-\t\t\t\t\t})]
-\t\t\t\t}), (0, react_jsx_runtime.jsx)("rect", {
-\t\t\t\t\tx: "10.74",
-\t\t\t\t\ty: "2.09",
-\t\t\t\t\twidth: "3.3",
-\t\t\t\t\theight: "3.3",
-\t\t\t\t\trx: "0.53",
-\t\t\t\t\tfill: "currentColor",
-\t\t\t\t\ttransform: "rotate(9 12.39 3.74)"
-\t\t\t\t})]
-\t\t\t});
-\t\t\tif (id === "models")`
-
 export function encodeWindowsOpenCommand(targetPath) {
   const literal = `'${targetPath.replaceAll("'", "''")}'`
   const command = `Invoke-Item -LiteralPath ${literal}`
@@ -149,21 +67,6 @@ export function prepareApiProxy(target = apiProxyPath) {
   if (patched !== source) writeFileSync(target, patched)
 }
 
-export function patchSettingsMarketNavIcon(source) {
-  if (source.includes(MARKET_NAV_ICON)) return source
-  const matches = source.split(SETTINGS_NAV_ICON_START).length - 1
-  if (matches !== 1) {
-    throw new Error(`Expected exactly one DeepSeek Harness settings nav icon function, found ${matches}`)
-  }
-  return source.replace(SETTINGS_NAV_ICON_START, MARKET_NAV_ICON)
-}
-
-export function prepareSettingsMarketNavIcon(target = settingsGeneralClientPath) {
-  const source = readFileSync(target, 'utf8')
-  const patched = patchSettingsMarketNavIcon(source)
-  if (patched !== source) writeFileSync(target, patched)
-}
-
 export function patchDshManifest(source) {
   const manifest = JSON.parse(source)
   if (manifest.name !== '@deepseek-ai/dsh' || typeof manifest.dependencies !== 'object') {
@@ -180,6 +83,9 @@ export function prepareDshManifest(target = dshManifestPath) {
   if (patched !== source) writeFileSync(target, patched)
 }
 
+// The settings nav-icon patch is gone: dshmarket 1.66+ claims its own settings
+// row at runtime (its client swaps the shell's fallback gear for the market
+// mark), so injecting a `market` glyph into the settings shell is redundant.
 export function patchDshMarketRoutes(source) {
   if (source.includes(PATCHED_GLOBAL_CATALOG)) return source
   const matches = source.split(ORIGINAL_GLOBAL_CATALOG).length - 1
@@ -193,6 +99,67 @@ export function prepareDshMarketRoutes(target = dshMarketRoutesPath) {
   const source = readFileSync(target, 'utf8')
   const patched = patchDshMarketRoutes(source)
   if (patched !== source) writeFileSync(target, patched)
+}
+
+// DeepSeek Harness keeps its bootstrap Include entry in a module-private WeakMap
+// inside `@deepseek-ai/dsh-app-boot`. Several shipped packages carry their own
+// copy of that module (`@deepseek-ai/dsh-base` mounts the config editor and HMR,
+// `@deepseek-ai/dsh-settings` and friends carry more), so the entry registered by
+// the boot copy is invisible to every other copy. The lookup then misses and each
+// profile-patch write is refused with "dsh: profile reload requires the root
+// Include entry" — the error the Settings UI shows when a preset or any other
+// setting is saved. Sharing one registry through `globalThis` gives every copy the
+// boot copy's entry.
+const ORIGINAL_BOOTSTRAP_INCLUDES = 'const bootstrapIncludes = /* @__PURE__ */ new WeakMap();'
+const PATCHED_BOOTSTRAP_INCLUDES =
+  "const bootstrapIncludes = globalThis[Symbol.for('@deepseek-ai/dsh-app-boot/bootstrapIncludes')] ??= new WeakMap();"
+
+export function patchAppBootSingleton(source) {
+  if (source.includes(PATCHED_BOOTSTRAP_INCLUDES)) return source
+  const matches = source.split(ORIGINAL_BOOTSTRAP_INCLUDES).length - 1
+  if (matches !== 1) {
+    throw new Error(`Expected exactly one bootstrap Include registry, found ${matches}`)
+  }
+  return source.replace(ORIGINAL_BOOTSTRAP_INCLUDES, PATCHED_BOOTSTRAP_INCLUDES)
+}
+
+/**
+ * Every installed copy of the boot module under one node_modules tree.
+ * @param {string} [directory] a node_modules directory, or any directory to walk.
+ * @returns {string[]} absolute paths of `@deepseek-ai/dsh-app-boot/lib/index.js`.
+ */
+export function findAppBootModules(directory = path.join(root, 'node_modules')) {
+  const found = []
+  const walk = (current) => {
+    let entries
+    try {
+      entries = readdirSync(current, { withFileTypes: true })
+    } catch (error) {
+      if (error.code === 'ENOENT' || error.code === 'ENOTDIR' || error.code === 'EACCES') return
+      throw error
+    }
+    for (const entry of entries) {
+      const child = path.join(current, entry.name)
+      if (entry.name === 'dsh-app-boot') {
+        const candidate = path.join(child, 'lib', 'index.js')
+        if (existsSync(candidate)) found.push(candidate)
+        continue
+      }
+      // Symlinked package trees are not descended into: a linked copy is patched
+      // at its real location, and following links here can revisit trees forever.
+      if (entry.isDirectory()) walk(child)
+    }
+  }
+  walk(directory)
+  return found
+}
+
+export function prepareAppBootSingleton(directory) {
+  for (const target of findAppBootModules(directory)) {
+    const source = readFileSync(target, 'utf8')
+    const patched = patchAppBootSingleton(source)
+    if (patched !== source) writeFileSync(target, patched)
+  }
 }
 
 export function findNodeLicense(executablePath = process.execPath) {
@@ -229,8 +196,8 @@ function isMainModule() {
 
 if (isMainModule()) {
   prepareApiProxy()
-  prepareSettingsMarketNavIcon()
   prepareDshManifest()
   prepareDshMarketRoutes()
+  prepareAppBootSingleton()
   prepareWindowsNode()
 }

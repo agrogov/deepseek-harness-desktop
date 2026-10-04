@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   encodeWindowsOpenCommand,
+  findAppBootModules,
+  patchAppBootSingleton,
   patchDshManifest,
   patchDshMarketRoutes,
-  patchSettingsMarketNavIcon,
   patchWindowsPathOpener,
 } from '../scripts/prepare-dependencies.mjs'
 
@@ -39,28 +41,7 @@ test('dependency patch fails loudly when upstream implementation drifts', () => 
   )
 })
 
-test('settings market nav uses the same block-grid logo as the market heading', () => {
-  const source = `before
-\t\tfunction navIcon(id) {
-\t\t\tif (id === "models") return modelIcon
-\t\t}
-after`
-  const patched = patchSettingsMarketNavIcon(source)
-  assert.match(patched, /if \(id === "market"\)/)
-  assert.match(patched, /viewBox: "0 0 16 16"/)
-  assert.match(patched, /transform: "rotate\(9 12\.39 3\.74\)"/)
-  assert.match(patched, /if \(id === "models"\) return modelIcon/)
-  assert.equal(patchSettingsMarketNavIcon(patched), patched)
-})
-
-test('settings market nav patch fails loudly when upstream implementation drifts', () => {
-  assert.throws(
-    () => patchSettingsMarketNavIcon('function navIcon() {}'),
-    /Expected exactly one/,
-  )
-})
-
-test('DSH dependency fallback includes the bundled plugin market', () => {
+test('DSH dependency fallback pins the bundled plugin market', () => {
   const source = JSON.stringify({
     name: '@deepseek-ai/dsh',
     dependencies: {
@@ -70,7 +51,7 @@ test('DSH dependency fallback includes the bundled plugin market', () => {
   const patched = patchDshManifest(source)
   assert.deepEqual(JSON.parse(patched).dependencies, {
     commander: '^15.0.0',
-    dshmarket: '1.40.0',
+    dshmarket: '1.66.4',
   })
   assert.equal(patchDshManifest(patched), patched)
 })
@@ -89,4 +70,30 @@ test('dshmarket global catalog falls back to the npm catalog package', () => {
 
 test('dshmarket catalog patch fails loudly when upstream routing drifts', () => {
   assert.throws(() => patchDshMarketRoutes('global: {}'), /Expected exactly one/)
+})
+
+test('app-boot copies share one bootstrap Include registry across the process', () => {
+  const source = 'const bootstrapIncludes = /* @__PURE__ */ new WeakMap();\n'
+  const patched = patchAppBootSingleton(source)
+  assert.match(patched, /globalThis\[Symbol\.for\('@deepseek-ai\/dsh-app-boot\/bootstrapIncludes'\)\] \?\?= new WeakMap\(\)/)
+  assert.doesNotMatch(patched, /@__PURE__ \*\/ new WeakMap/)
+  assert.equal(patchAppBootSingleton(patched), patched)
+})
+
+test('app-boot singleton patch fails loudly when the registry declaration drifts', () => {
+  assert.throws(
+    () => patchAppBootSingleton('const bootstrapIncludes = new Map();'),
+    /Expected exactly one bootstrap Include registry, found 0/,
+  )
+})
+
+test('every installed app-boot copy is discovered and patched', () => {
+  const modules = findAppBootModules()
+  assert.ok(modules.length > 0, 'expected at least one installed @deepseek-ai/dsh-app-boot')
+  for (const target of modules) {
+    assert.match(
+      readFileSync(target, 'utf8'),
+      /globalThis\[Symbol\.for\('@deepseek-ai\/dsh-app-boot\/bootstrapIncludes'\)\]/,
+    )
+  }
 })

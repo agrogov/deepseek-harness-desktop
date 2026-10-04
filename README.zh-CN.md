@@ -33,7 +33,7 @@ DeepSeek Harness Desktop 将官方 DeepSeek Harness Web 体验封装为独立桌
 本项目专注于桌面宿主能力，不 fork、不修改、不注入，也不重新实现 Harness UI。模型、会话、设置、插件和 Agent 能力均由官方 `@deepseek-ai/dsh` 提供。
 
 > [!IMPORTANT]
-> 本项目是非官方社区封装，目前仍属于早期版本，并依赖快速演进中的 `@deepseek-ai/dsh@0.1.5-rc.3`。macOS 构建尚未经过 Apple 公证，Windows 构建尚未进行商业代码签名。
+> 本项目是非官方社区封装，目前仍属于早期版本，并依赖快速演进中的 `@deepseek-ai/dsh@0.2.0-rc.2`。macOS 构建尚未经过 Apple 公证，Windows 构建尚未进行商业代码签名。
 
 ## 下载
 
@@ -100,7 +100,7 @@ DeepSeek Harness 已经提供完整的 Agent Runtime 和 Web UI。本项目不�
 
 打开“**设置 → Plugin Market**”即可浏览和搜索社区插件，查看插件来源，并执行安装、更新、停用或卸载。插件目录实时读取自 [awesome-dsh-plugin.com](https://awesome-dsh-plugin.com)，插件变更仍通过官方 `dsh plugin --profile web` 流程完成，并保存在本机 DSH profile 中。
 
-桌面安装包内置 `dshmarket@1.40.0` 和兼容的 pnpm 运行时。由于应用生命周期由桌面宿主管理，市场内的一键进程重启已关闭；当插件提示需要重启时，请刷新页面或重新启动 DeepSeek Harness Desktop。
+桌面安装包内置 `dshmarket@1.66.4` 和兼容的 pnpm 运行时。由于应用生命周期由桌面宿主管理，市场内的一键进程重启已关闭；当插件提示需要重启时，请刷新页面或重新启动 DeepSeek Harness Desktop。
 
 ### SSH 与远程运维
 
@@ -188,7 +188,7 @@ DeepSeek Harness Desktop
 
 ## 上游版本与许可
 
-当前固定使用 `@deepseek-ai/dsh@0.1.5-rc.3`，以保证打包结果可复现。
+当前固定使用 `@deepseek-ai/dsh@0.2.0-rc.2`，以保证打包结果可复现。
 
 桌面封装采用 [MIT License](LICENSE)。内置的 DeepSeek Harness、dsh-market 与 pnpm 同样采用 MIT License，其许可声明保存在 [`third-party-licenses`](third-party-licenses)。
 
